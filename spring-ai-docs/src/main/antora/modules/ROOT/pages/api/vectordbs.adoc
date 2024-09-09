@@ -1,0 +1,231 @@
+[[vector-databases]]
+= Vector Databases
+
+A vector databases is a specialized type of database that plays an essential role in AI applications.
+
+In vector databases, queries differ from traditional relational databases.
+Instead of exact matches, they perform similarity searches.
+When given a vector as a query, a vector database returns vectors that are "`similar`" to the query vector.
+Further details on how this similarity is calculated at a high-level is provided in a xref:api/vectordbs/understand-vectordbs.adoc#vectordbs-similarity[Vector Similarity].
+
+Vector databases are used to integrate your data with AI models.
+The first step in their usage is to load your data into a vector database.
+Then, when a user query is to be sent to the AI model, a set of similar documents is first retrieved.
+These documents then serve as the context for the user's question and are sent to the AI model, along with the user's query.
+This technique is known as xref:concepts.adoc#concept-rag[Retrieval Augmented Generation (RAG)].
+
+The following sections describe the Spring AI interface for using multiple vector database implementations and some high-level sample usage.
+
+The last section is intended to demystify the underlying approach of similarity searching in vector databases.
+
+[[api-overview]]
+== API Overview
+This section serves as a guide to the `VectorStore` interface and its associated classes within the Spring AI framework.
+
+Spring AI offers an abstracted API for interacting with vector databases through the `VectorStore` interface.
+
+Here is the `VectorStore` interface definition:
+
+```java
+public interface VectorStore {
+
+    void add(List<Document> documents);
+
+    Optional<Boolean> delete(List<String> idList);
+
+    List<Document> similaritySearch(String query);
+
+    List<Document> similaritySearch(SearchRequest request);
+}
+```
+
+and the related `SearchRequest` builder:
+
+```java
+public class SearchRequest {
+
+	public final String query;
+	private int topK = 4;
+	private double similarityThreshold = SIMILARITY_THRESHOLD_ALL;
+	private Filter.Expression filterExpression;
+
+	public static SearchRequest query(String query) { return new SearchRequest(query); }
+
+	private SearchRequest(String query) { this.query = query; }
+
+	public SearchRequest withTopK(int topK) {...}
+	public SearchRequest withSimilarityThreshold(double threshold) {...}
+	public SearchRequest withSimilarityThresholdAll() {...}
+	public SearchRequest withFilterExpression(Filter.Expression expression) {...}
+	public SearchRequest withFilterExpression(String textExpression) {...}
+
+	public String getQuery() {...}
+	public int getTopK() {...}
+	public double getSimilarityThreshold() {...}
+	public Filter.Expression getFilterExpression() {...}
+}
+
+```
+
+To insert data into the vector database, encapsulate it within a `Document` object.
+The `Document` class encapsulates content from a data source, such as a PDF or Word document, and includes text represented as a string.
+It also contains metadata in the form of key-value pairs, including details such as the filename.
+
+Upon insertion into the vector database, the text content is transformed into a numerical array, or a `float[]`, known as vector embeddings, using an embedding model. Embedding models, such as https://en.wikipedia.org/wiki/Word2vec[Word2Vec], https://en.wikipedia.org/wiki/GloVe_(machine_learning)[GLoVE], and https://en.wikipedia.org/wiki/BERT_(language_model)[BERT], or OpenAI's `text-embedding-ada-002`, are used to convert words, sentences, or paragraphs into these vector embeddings.
+
+The vector database's role is to store and facilitate similarity searches for these embeddings. It does not generate the embeddings itself. For creating vector embeddings, the `EmbeddingModel` should be utilized.
+
+The `similaritySearch` methods in the interface allow for retrieving documents similar to a given query string. These methods can be fine-tuned by using the following parameters:
+
+* `k`: An integer that specifies the maximum number of similar documents to return. This is often referred to as a 'top K' search, or 'K nearest neighbors' (KNN).
+* `threshold`: A double value ranging from 0 to 1, where values closer to 1 indicate higher similarity. By default, if you set a threshold of 0.75, for instance, only documents with a similarity above this value are returned.
+* `Filter.Expression`: A class used for passing a fluent DSL (Domain-Specific Language) expression that functions similarly to a 'where' clause in SQL, but it applies exclusively to the metadata key-value pairs of a `Document`.
+* `filterExpression`: An external DSL based on ANTLR4 that accepts filter expressions as strings. For example, with metadata keys like country, year, and `isActive`, you could use an expression such as: `country == 'UK' && year >= 2020 && isActive == true.`
+
+Find more information on the `Filter.Expression` in the <<metadata-filters>> section.
+
+== Schema Initialization
+
+Some vector stores require their backend schema to be initialized before usage.
+It will not be initialized for you by default.
+You must opt-in, by passing a `boolean` for the appropriate constructor argument or, if using Spring Boot, setting the appropriate `initialize-schema` property to `true` in `application.properties` or `application.yml`.
+Check the documentation for the vector store you are using for the specific property name.
+
+== Available Implementations
+
+These are the available implementations of the `VectorStore` interface:
+
+* xref:api/vectordbs/azure.adoc[Azure Vector Search] - The https://learn.microsoft.com/en-us/azure/search/vector-search-overview[Azure] vector store.
+* xref:api/vectordbs/apache-cassandra.adoc[Apache Cassandra] - The https://cassandra.apache.org/doc/latest/cassandra/vector-search/overview.html[Apache Cassandra] vector store.
+* xref:api/vectordbs/chroma.adoc[Chroma Vector Store] - The https://www.trychroma.com/[Chroma] vector store.
+* xref:api/vectordbs/elasticsearch.adoc[Elasticsearch Vector Store] - The https://www.elastic.co/[Elasticsearch] vector store.
+* xref:api/vectordbs/gemfire.adoc[GemFire Vector Store] - The https://tanzu.vmware.com/content/blog/vmware-gemfire-vector-database-extension[GemFire] vector store.
+* xref:api/vectordbs/milvus.adoc[Milvus Vector Store] - The https://milvus.io/[Milvus] vector store.
+* xref:api/vectordbs/mongodb.adoc[MongoDB Atlas Vector Store] - The https://www.mongodb.com/atlas/database[MongoDB Atlas] vector store.
+* xref:api/vectordbs/neo4j.adoc[Neo4j Vector Store] - The https://neo4j.com/[Neo4j] vector store.
+* xref:api/vectordbs/opensearch.adoc[OpenSearch Vector Store] - The https://opensearch.org/platform/search/vector-database.html[OpenSearch] vector store.
+* xref:api/vectordbs/oracle.adoc[Oracle Vector Store] - The https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/overview-ai-vector-search.html[Oracle Database] vector store.
+* xref:api/vectordbs/pgvector.adoc[PgVector Store] - The https://github.com/pgvector/pgvector[PostgreSQL/PGVector] vector store.
+* xref:api/vectordbs/pinecone.adoc[Pinecone Vector Store] - https://www.pinecone.io/[PineCone] vector store.
+* xref:api/vectordbs/qdrant.adoc[Qdrant Vector Store] - https://www.qdrant.tech/[Qdrant] vector store.
+* xref:api/vectordbs/redis.adoc[Redis Vector Store] - The https://redis.io/[Redis] vector store.
+* xref:api/vectordbs/hana.adoc[SAP Hana Vector Store] - The https://news.sap.com/2024/04/sap-hana-cloud-vector-engine-ai-with-business-context/[SAP HANA] vector store.
+* xref:api/vectordbs/typesense.adoc[Typesense Vector Store] - The https://typesense.org/docs/0.24.0/api/vector-search.html[Typesense] vector store.
+* xref:api/vectordbs/weaviate.adoc[Weaviate Vector Store] - The https://weaviate.io/[Weaviate] vector store.
+* link:https://github.com/spring-projects/spring-ai/blob/main/spring-ai-core/src/main/java/org/springframework/ai/vectorstore/SimpleVectorStore.java[SimpleVectorStore] - A simple implementation of persistent vector storage, good for educational purposes.
+
+More implementations may be supported in future releases.
+
+If you have a vector database that needs to be supported by Spring AI, open an issue on GitHub or, even better, submit a pull request with an implementation.
+
+Information on each of the `VectorStore` implementations can be found in the subsections of this chapter.
+
+== Example Usage
+
+To compute the embeddings for a vector database, you need to pick an embedding model that matches the higher-level AI model being used.
+
+For example, with OpenAI's ChatGPT, we use the `OpenAiEmbeddingModel` and a model named `text-embedding-ada-002`.
+
+The Spring Boot starter's auto-configuration for OpenAI makes an implementation of `EmbeddingModel` available in the Spring application context for dependency injection.
+
+The general usage of loading data into a vector store is something you would do in a batch-like job, by first loading data into Spring AI's `Document` class and then calling the `save` method.
+
+Given a `String` reference to a source file that represents a JSON file with data we want to load into the vector database, we use Spring AI's `JsonReader` to load specific fields in the JSON, which splits them up into small pieces and then passes those small pieces to the vector store implementation.
+The `VectorStore` implementation computes the embeddings and stores the JSON and the embedding in the vector database:
+
+```java
+  @Autowired
+  VectorStore vectorStore;
+
+  void load(String sourceFile) {
+            JsonReader jsonReader = new JsonReader(new FileSystemResource(sourceFile),
+                    "price", "name", "shortDescription", "description", "tags");
+            List<Document> documents = jsonReader.get();
+            this.vectorStore.add(documents);
+  }
+```
+
+Later, when a user question is passed into the AI model, a similarity search is done to retrieve similar documents, which are then "'stuffed'" into the prompt as context for the user's question.
+
+```java
+   String question = <question from user>
+   List<Document> similarDocuments = store.similaritySearch(question);
+```
+
+Additional options can be passed into the `similaritySearch` method to define how many documents to retrieve and a threshold of the similarity search.
+
+== Metadata Filters [[metadata-filters]]
+
+This section describes various filters that you can use against the results of a query.
+
+=== Filter String
+You can pass in an SQL-like filter expressions as a `String` to one of the `similaritySearch` overloads.
+
+Consider the following examples:
+
+* `"country == 'BG'"`
+* `"genre == 'drama' && year >= 2020"`
+* `"genre in ['comedy', 'documentary', 'drama']"`
+
+=== Filter.Expression
+
+You can create an instance of `Filter.Expression` with a `FilterExpressionBuilder` that exposes a fluent API.
+A simple example is as follows:
+
+[source, java]
+----
+FilterExpressionBuilder b = new FilterExpressionBuilder();
+Expression expression = b.eq("country", "BG").build();
+----
+
+You can build up sophisticated expressions by using the following operators:
+
+[source, text]
+----
+EQUALS: '=='
+MINUS : '-'
+PLUS: '+'
+GT: '>'
+GE: '>='
+LT: '<'
+LE: '<='
+NE: '!='
+----
+
+You can combine expressions by using the following operators:
+
+[source,text]
+----
+AND: 'AND' | 'and' | '&&';
+OR: 'OR' | 'or' | '||';
+----
+
+Considering the following example:
+
+[source,java]
+----
+Expression exp = b.and(b.eq("genre", "drama"), b.gte("year", 2020)).build();
+----
+
+You can also use the following operators:
+
+[source,text]
+----
+IN: 'IN' | 'in';
+NIN: 'NIN' | 'nin';
+NOT: 'NOT' | 'not';
+----
+
+Consider the following example:
+
+[source,java]
+----
+Expression exp = b.and(b.eq("genre", "drama"), b.gte("year", 2020)).build();
+----
+
+
+== Understanding Vectors
+
+xref:api/vectordbs/understand-vectordbs.adoc[Understanding Vectors]
+
+
